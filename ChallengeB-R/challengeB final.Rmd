@@ -1,0 +1,331 @@
+---
+title: "Challenge B - R Programming"
+author:
+- Antonio Avila
+- Oriol Gonzalez
+date: "19/11/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+# TASK 1B: Predicting house prices in Ames, Iowa (continued)
+
+\section{Step 1: ML explanation}
+A feed-forward neural network is an artificial neural network wherein connections between the units do not form a cycle. In this network, the information moves in only one direction, forward, from the input nodes, through the hidden nodes (if any) and to the output nodes. There are no cycles or loops in the network, nor feedback connections in which outputs of the model are fed back into itself. The goal is to estimate the best function approximation f that maps inputs to outputs.
+
+![Feed-forward neural networks.](neural_net2.jpeg)
+
+\section{Step 2: Training the data}
+
+\textit{Need to install packages on the console}
+
+```{r loaad data, include=FALSE, echo=FALSE}
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+```{r package installation, include=FALSE, echo=FALSE}
+#install.packages("zoo")
+#install.packages("plyr")
+#install.packages("nnet")
+#install.packages("ggplot2")
+#install.packages("np")
+#install.packages("stringr")
+```
+
+```{r clean train data, include=FALSE, echo=FALSE}
+train <- train[lapply(train, function(df)sum(is.na(df))/length(df))<0.1] #remove variable with lots of NAs
+library(dplyr)
+int <- select_if(train, is.integer)
+fac <- select_if(train, is.factor)
+
+library(zoo)
+fac <- na.locf(fac, fromLast = TRUE) #fill NAs with previous values
+fac <- data.frame(lapply(fac,as.factor))
+int <- na.locf(int, fromLast = TRUE) 
+int <- data.frame(lapply(int, as.integer)) 
+
+train <- cbind(int,fac)
+```
+
+
+
+```{r clean test data, include=FALSE, echo=FALSE}
+test <- test[lapply(test, function(df)sum(is.na(df))/length(df))<0.1] #remove variable with lots of NAs
+int2 <- select_if(test, is.integer)
+fac2 <- select_if(test, is.factor)
+
+fac2 <- na.locf(fac2, fromLast = TRUE) #fill NAs with previous values
+fac2 <- data.frame(lapply(fac2,as.factor))
+int2 <- na.locf(int2, fromLast = TRUE) 
+int2 <- data.frame(lapply(int2, as.integer)) 
+
+test <- cbind(int2,fac2)
+```
+
+```{r create general df, include=FALSE, echo=FALSE}
+library(plyr)
+df <- rbind.fill(train, test) #merge train and test data
+df <- df[,-1] #remove variable Id
+
+#move SalePrice to last column (easier to manipulate later)
+sp <- data.frame(df[,36]) #take entire column
+colnames(sp) <- c("SalePrice")
+
+ssp <- df[,-36] #take the dataframe without it
+
+df <- cbind(ssp,sp) #merge both, so SalePrice will be at the end
+traindf <- df[1:1460,] #specify what rows are training data
+```
+
+
+```{r nonparametric estimation}
+library(nnet) #load the non-parametric estimation package
+training <- nnet(SalePrice~., traindf, size = 3, skip = TRUE, linout = TRUE)
+
+```
+
+\section{Step 3: Predictions}
+```{r predictions, echo=FALSE}
+pred <- predict(training, df[1461:2919,1:73]) #make predictions with previous estimations
+predictions <- data.frame(predicted = pred, actual = df[1:1459, 74]) #store them in a new dataframe to compare them easily
+head(predictions)
+```
+
+
+
+```{r plot predictions, echo=FALSE}
+l = 1330:1460
+plot(NA, xlim = c(1, length(predictions[l, 1])), ylim = c(0, max(predictions[, 2])), xlab = "Testing Cases", ylab = "Price")
+lines(predictions[l, 1], col = "red")
+lines(predictions[l, 2])
+legend("topleft", cex = 0.75, lty = 1, c("Predicted Price", "True Price"), col = c("red", "black"))
+```
+
+
+```{r comparacio A, echo=FALSE}
+cha <- read.csv("Predictions.csv")
+cha <- cha[,-1]
+pred <- pred[1:1319,]
+df <- df[1:1319,]
+predictionsa <- data.frame(predicted.now = pred, predicted.before=cha, actual = df[, 74]) #store them in a new dataframe to compare them easily
+head(predictionsa)
+```
+
+```{r plota}
+l = 1000:1080
+plot(NA, xlim = c(1, length(predictionsa[l, 1])), ylim = c(0, max(predictionsa[, 2])), 
+     xlab = "Testing Cases", ylab = "Price")
+lines(predictionsa[l, 1], col = "red")
+lines(predictionsa[l, 2], col = "blue")
+lines(predictionsa[l,3])
+legend("topleft", cex = 0.75, lty = 1, c("Predicted Price (B)", 
+  "Predicted Price (A)", "True Price"), col = c("red", "blue", "black"))
+```
+
+
+# TASK 2B: Overfitting in Machine Learning (continued)
+
+\section{Step 1: Estimatng a low-flexibility local linear model on the training data}
+```{r load packages, include=FALSE, echo=FALSE}
+library(ggplot2)
+library(np)
+```
+
+```{r load data, include=FALSE, echo=FALSE}
+train <- read.csv("training2.csv")
+test <- read.csv("testing2.csv")
+train<- train[,-1]
+
+test<-test[,-1]
+exs<- train[,1]
+es<-test[,1]
+```
+
+```{r lowflex train}
+ll.fit.lowflex <- npreg(y~x, bws = 0.5, train, regtype="ll")
+summary(ll.fit.lowflex)
+```
+
+
+```{r sm, include=FALSE, echo=FALSE}
+fit<- fitted.values(ll.fit.lowflex)
+fit<- data.frame(fit)
+fit<-cbind(exs,fit) #Extract fitted values, put them on a data frame and add the x's
+
+```
+
+
+\section{Step 2: Estimatng a high-flexibility local linear model on the training data}
+
+```{r highflex train}
+ll.fit.highflex <- npreg(y~x, bws = 0.01, train, regtype="ll")
+summary(ll.fit.highflex)
+```
+
+```{r smth, include=FALSE, echo=FALSE}
+fit2<- fitted.values(ll.fit.highflex)
+fit2<- data.frame(fit2)
+fit2<-cbind(exs, fit2) #Extract fitted values, put them on a data frame and add the x's
+
+```
+
+
+\section{Step 3: Scatterplot of x-y, along with the predictions of ll.fit.lowflex and ll.fit.highflex, on only the training data}
+```{r scatterplot of x-y, echo=FALSE, fig.cap=paste("Step 3 - Predictions of ll.fit.lowflex and ll.fit.highflex on training data.")}
+ggplot(train)+ #Comments on title
+  geom_point(aes(x,y), data = train)+
+  geom_line(aes(x=exs,y=fit), data = fit, colour="red")+
+  geom_line(aes(x=exs,y=fit2), data = fit2, colour="blue")
+```
+
+\section{Step 4: Interpretation of the predictions}
+
+We can see that there is a trade-off in the predictions between little variance and little bias. On one hand, the predictions of ll.fit.lowflex are less variable, but have more bias, i.e. propably underfitted. On the other hand, predictions of ll.fit.highflex are more variable but have less bias, i.e. probably overfitted.
+
+\section{Step 5: Scatterplot of x-y, along with the predictions of ll.fit.lowflex and ll.fit.highflex now using the test data}
+
+```{r test prediction}
+predictlow <- predict(ll.fit.lowflex, newdata=test) #We save the predictions
+predicthigh <- predict(ll.fit.highflex, newdata=test)
+
+```
+
+```{r dataf, include=FALSE, echo=FALSE}
+predictlow <- data.frame(es, predictlow) #We transform the data do dataframe
+predicthigh <- data.frame(es, predicthigh)
+```
+
+
+
+```{r scatterplot test, echo=FALSE, fig.cap= paste("Step 5 - Predictions of ll.fit.lowflex and ll.fit.highflex on test data.")}
+ggplot(test)+
+  geom_point(aes(x,y), data = test)+
+  geom_line(aes(x=es,y=predictlow), data = predictlow, colour="red")+
+  geom_line(aes(x=es,y=predicthigh), data = predicthigh, colour="blue")
+```
+
+Again, the predictions for the ll.fit.highflex model are more variable. The bias of the least biased model has increased, since before it matched the exact point of the actual data, but now it is matching the predictions.
+\section{Step 6 - Create a vector of bandwidth going from 0.01 to 0.5 with a step of 0.001}
+```{r 2b_step_6}
+bandwith <- seq(0.01,0.5,0.001)
+```
+We create a sequence on numbers that will be the different bandwidths of our models
+\section{Step 7, 8 and 9}
+
+```{r 2b_step_7.8.9 prediction}
+set.seed(1)
+mse <- matrix(nrow = length(bandwith), ncol = 2)
+for(i in 1:length(bandwith)){
+  reg <- npreg(y~x, bws = bandwith[i], train, regtype="ll")
+  predreg1 <- fitted.values(reg)
+  predreg2 <- predict(reg, newdata=test)
+  mse[i,1] <- mean( (predreg1-train$y)^2 )
+  mse[i,2] <- mean( (predreg2-test$y)^2  )
+}
+mse <-data.frame(mse.train=mse[,1],mse.test=mse[,2])
+```
+We do steps 7,8 and 9 by regressing each model, doing the predictions and then saving the Mean Square Error in a dataframe.
+
+\section{Step 10 - Draw on the same plot how the MSE on training data, and test data, change when the bandwidth increases. Conclude.}
+```{r MSE graph, echo=FALSE, warning=FALSE,fig.cap= paste("mean square error of predicted values in the training (red) and the test (blue) data")}
+ggplot(mse)+
+  geom_line(aes(x=bandwith,y=mse.train),data = mse, colour="red")+
+  geom_line(aes(x=bandwith,y=mse.test),data = mse, colour="blue")+
+  ylim(0, 3)
+```
+The plot of MSE gives the usual result with\
+- a MSE of the sample monotonicaly increasing with commplexity (given the model can adjust less to the training data) and \
+- a MSE of the test with a convex form (given the bias-variance tradeoff) and a minimum when bandwith is close to 0.2.
+
+
+# TASK 3B: Privacy regulation compliance in France
+
+\section{Step 1 - Import the CNIL dataset from the Open Data Portal}
+
+
+```{r 3b_1,warning=FALSE,}
+library(stringr)
+CNIL <- read.csv("OpenCNIL_Organismes_avec_CIL_VD_20171115.csv", sep = ";")
+```
+
+\section{Step 2 - Show a (nice) table with the number of organizations that has nominated a CNIL per department.}
+
+```{r 3b_2,warning=FALSE,}
+
+CP2 <- str_sub(CNIL$Code_Postal,start=1, end=2) #Get the first 2 digits
+CNIL$CP2 <- CP2
+CNIL$numeric <- CNIL$CP2 %in% c("01","02","03","04","05","06","07","08","09",0:100)
+CNIL<-CNIL[CNIL$numeric==TRUE,]
+count <- table(CNIL$CP2) # Count the number of rows that have the same CP2
+
+#barplot(count, main="Number of in each department", horiz=T,names.arg= CNIL$Ville )
+barplot(count, main="Number of organizations that has nominated a CIL", ylab = "Department identifier", horiz=T, cex.names = 0.6)
+```
+
+\section{Step 3 - Merge the information from the SIREN dataset into the CNIL data. Explain the method you use.}
+
+```{r 3b_3,warning=FALSE,message=FALSE}
+#Charge the SIREN dataset:
+require(data.table)
+
+#SIREN <- fread("siren.csv")
+
+#dup <- duplicated(SIREN[,1])
+           
+#SIREN <- SIREN[!dup, ]
+#head(SIREN)
+
+#merge <- merge(SIREN, CNIL, by='SIREN')
+
+library(readr)
+merge <- read_csv("merge.csv")
+
+```
+
+In order to merge the two datasets we need to:\
+- download and unzip SIREN (external)\
+- import it with fread\
+- identify the duplicates\
+- eliminate them and see that everithing is ok\
+- finally merge the two datasets with the common denominator.\
+(we include directly the results of this procedeure with the dataset "merge")\
+
+\section{Step 4 - Plot the histogram of the size of the companies that nominated a CIL. Comment.}
+
+```{r 3b_4, echo=FALSE}
+
+library(ggplot2)
+sum <-sum(table(merge$TEFEN))
+prop<-table(merge$TEFEN)/sum
+# barplot(prop) NON GGPLOT2 SOLUTION
+pro <-data.frame(prop)
+colnames(pro)[1] <- "Number_of_employees"
+p<-ggplot(data=pro, aes(x=Number_of_employees, y=Freq)) +
+  geom_bar(stat="identity")
+p
+
+```
+
+Interpretation of the values of the x axis:
+
+Value on Table| Interpretation
+-------------|-------------:
+0|0 employee (but having employed during the reference year)
+1|1 or 2 employees
+2|3 to 5 employees
+3|6 to 9 employees
+11|10 to 19 employees
+12|20 to 49 employees
+21|50 to 99 employees
+22|100 to 199 employees
+31|200 to 249 employees
+32|250 to 499 employees
+41|500 to 999 employees
+42|1 000 to 1 999 employees
+51|2 000 to 4 999 employees
+52|5 000 to 9 999 employees
+53|10000 employees and more
+NN|No employee during the reference year 
+
+We can see that most of the companies are neither very big nor small and have from 6 to 50 employees.
